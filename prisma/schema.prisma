@@ -1,0 +1,231 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String   @default("Admin")
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CompanySetting {
+  id              String   @id @default("default")
+  companyName     String   @default("FUERA")
+  logoUrl         String?  @db.Text // Base64 logo
+  address         String   @db.Text
+  gstin           String?
+  pan             String?
+  cin             String?
+  bankName        String?
+  accountNumber   String?
+  ifscCode        String?
+  upiQrCodeUrl    String?  @db.Text // Dynamic generation or upload
+  signatureUrl    String?  @db.Text // Draw signature data URI
+  defaultTerms    String   @db.Text
+  invoicePrefix   String   @default("INV-")
+  quotationPrefix String   @default("QTN-")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Customer {
+  id            String      @id @default(uuid())
+  companyName   String
+  contactPerson String
+  mobile        String
+  whatsapp      String?
+  email         String
+  gstNumber     String?
+  address       String      @db.Text
+  city          String
+  state         String
+  pin           String
+  notes         String?     @db.Text
+  quotations    Quotation[]
+  invoices      Invoice[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+enum ProductUnit {
+  NOS
+  PCS
+  BOX
+  KGS
+  LTRS
+  MTRS
+  HOURS
+  DAYS
+}
+
+enum ProductType {
+  SERVICE
+  PRODUCT
+}
+
+model ProductService {
+  id          String      @id @default(uuid())
+  name        String
+  description String?     @db.Text
+  category    String      // Category string
+  hsnSac      String
+  unit        ProductUnit @default(PCS)
+  price       Float
+  gstPercent  Float       @default(18.0) // E.g. 18%
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Quotation {
+  id              String          @id @default(uuid())
+  quotationNumber String          @unique // QTN-0001
+  date            DateTime        @default(now())
+  validUntil      DateTime
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  discount        Float           @default(0) // flat or percentage
+  gstInclusive    Boolean         @default(false)
+  notes           String?         @db.Text
+  terms           String?         @db.Text
+  status          QuotationStatus @default(DRAFT)
+  items           QuotationItem[]
+  invoice         Invoice?        // Link to converted invoice
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model QuotationItem {
+  id          String    @id @default(uuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  name        String
+  description String?   @db.Text
+  hsnSac      String
+  quantity    Float
+  unit        String
+  price       Float
+  gstPercent  Float
+  discount    Float     @default(0)
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  invoiceNumber   String        @unique // INV-0001
+  invoiceDate     DateTime      @default(now())
+  dueDate         DateTime
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  discount        Float         @default(0)
+  shippingCharges Float         @default(0)
+  roundOff        Float         @default(0)
+  amountInWords   String
+  status          InvoiceStatus @default(PENDING)
+  isGst           Boolean       @default(true) // GST or Non-GST
+  notes           String?       @db.Text
+  terms           String?       @db.Text
+  quotationId     String?       @unique
+  quotation       Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  items           InvoiceItem[]
+  payments        Payment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?  @db.Text
+  hsnSac      String
+  quantity    Float
+  unit        String
+  price       Float
+  gstPercent  Float
+  discount    Float    @default(0)
+}
+
+enum ExpenseCategory {
+  OFFICE
+  MARKETING
+  SOFTWARE
+  TRAVEL
+  SALARY
+  INTERNET
+  MISCELLANEOUS
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CHEQUE
+}
+
+model Expense {
+  id            String          @id @default(uuid())
+  category      ExpenseCategory
+  amount        Float
+  vendor        String
+  date          DateTime        @default(now())
+  paymentMethod PaymentMethod   @default(UPI)
+  notes         String?         @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+enum PurchaseBillStatus {
+  PAID
+  PENDING
+}
+
+model PurchaseBill {
+  id         String             @id @default(uuid())
+  vendor     String
+  billNumber String
+  date       DateTime           @default(now())
+  amount     Float
+  gst        Float              @default(0)
+  notes      String?            @db.Text
+  status     PurchaseBillStatus @default(PENDING)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  invoiceId       String
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentDate     DateTime      @default(now())
+  paymentMethod   PaymentMethod @default(UPI)
+  amountPaid      Float
+  referenceNumber String?
+  notes           String?       @db.Text
+  createdAt       DateTime      @default(now())
+}
